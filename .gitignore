@@ -1,0 +1,43 @@
+# Build directories
+/build/
+
+# CMake/Ninja generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+_deps/
+
+# Generated binaries/libraries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Doxygen output
+/doc/html/
+/doc/latex/
+/doc/xml/
+/doc/rtf/
+/doc/man/
+/doc/*.tag
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
