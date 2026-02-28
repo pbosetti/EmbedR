@@ -11,6 +11,7 @@
 #include <random>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 
 #define R_NO_REMAP
 #include <Rinternals.h>
@@ -34,11 +35,15 @@ int g_instance_count = 0;
 
 #ifdef _WIN32
 void set_process_env(const std::string& key, const std::string& value) {
-  _putenv_s(key.c_str(), value.c_str());
+  if (_putenv_s(key.c_str(), value.c_str()) != 0) {
+    throw std::runtime_error("Failed to set environment variable: " + key);
+  }
 }
 #else
 void set_process_env(const std::string& key, const std::string& value) {
-  setenv(key.c_str(), value.c_str(), 1);
+  if (setenv(key.c_str(), value.c_str(), 1) != 0) {
+    throw std::runtime_error("Failed to set environment variable: " + key);
+  }
 }
 #endif
 
@@ -48,6 +53,17 @@ std::string make_temp_file_name(const std::string& extension) {
   std::ostringstream os;
   os << "r_embed_plot_" << dist(rng) << extension;
   return os.str();
+}
+
+std::filesystem::path make_temp_file_path(const std::string& extension) {
+  const auto temp_dir = std::filesystem::temp_directory_path();
+  for (int attempt = 0; attempt < 128; ++attempt) {
+    const auto candidate = temp_dir / make_temp_file_name(extension);
+    if (!std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+  throw std::runtime_error("Failed to allocate unique temporary file path for plot output.");
 }
 
 SEXP json_to_sexp_internal(const nlohmann::json& value, int& protect_count) {
@@ -251,8 +267,12 @@ std::vector<std::uint8_t> RInterpreter::render_plot(const std::string& plot_code
                                                     int width,
                                                     int height,
                                                     int dpi) const {
+  if (width <= 0 || height <= 0 || dpi <= 0) {
+    throw std::invalid_argument("width, height and dpi must be positive.");
+  }
+
   const auto extension = (format == GraphicsFormat::Png) ? ".png" : ".pdf";
-  const auto temp_path = std::filesystem::temp_directory_path() / make_temp_file_name(extension);
+  const auto temp_path = make_temp_file_path(extension);
 
   const auto escaped_path = escape_r_string(temp_path.string());
   if (format == GraphicsFormat::Png) {
@@ -289,16 +309,25 @@ std::vector<std::uint8_t> RInterpreter::render_plot(const std::string& plot_code
 
 std::filesystem::path RInterpreter::find_r_home(const std::optional<std::filesystem::path>& configured_r_home) {
   if (configured_r_home.has_value()) {
+    if (!std::filesystem::exists(configured_r_home.value())) {
+      throw std::runtime_error("Configured R home does not exist: " + configured_r_home->string());
+    }
     return configured_r_home.value();
   }
 
   if (const char* env = std::getenv("R_HOME"); env != nullptr && std::strlen(env) > 0) {
-    return std::filesystem::path(env);
+    const std::filesystem::path path(env);
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
   }
 
 #ifdef R_EMBED_DEFAULT_R_HOME
   if constexpr (sizeof(R_EMBED_DEFAULT_R_HOME) > 1) {
-    return std::filesystem::path(R_EMBED_DEFAULT_R_HOME);
+    const std::filesystem::path path(R_EMBED_DEFAULT_R_HOME);
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
   }
 #endif
 
@@ -307,6 +336,9 @@ std::filesystem::path RInterpreter::find_r_home(const std::optional<std::filesys
 
 std::optional<std::filesystem::path> RInterpreter::find_renv_file(const Options& options) {
   if (options.renv_path.has_value()) {
+    if (!std::filesystem::exists(options.renv_path.value())) {
+      throw std::runtime_error("Configured renv path does not exist: " + options.renv_path->string());
+    }
     return options.renv_path.value();
   }
 
@@ -315,12 +347,12 @@ std::optional<std::filesystem::path> RInterpreter::find_renv_file(const Options&
   }
 
   const auto candidate_renviron = options.working_directory / ".Renviron";
-  if (std::filesystem::exists(candidate_renviron)) {
+  if (std::filesystem::is_regular_file(candidate_renviron)) {
     return candidate_renviron;
   }
 
   const auto candidate_renv = options.working_directory / ".Renv";
-  if (std::filesystem::exists(candidate_renv)) {
+  if (std::filesystem::is_regular_file(candidate_renv)) {
     return candidate_renv;
   }
 
@@ -333,6 +365,11 @@ void RInterpreter::initialize_r(const std::filesystem::path& r_home,
   if (renv_file.has_value()) {
     set_process_env("R_ENVIRON", renv_file->string());
   }
+#ifdef _WIN32
+  if (const char* r_user = std::getenv("R_USER"); r_user == nullptr || std::strlen(r_user) == 0) {
+    set_process_env("R_USER", std::filesystem::current_path().string());
+  }
+#endif
 
   char arg0[] = "R";
   char arg1[] = "--silent";

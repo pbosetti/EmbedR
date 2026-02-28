@@ -7,18 +7,38 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(EMBEDR_BUILD_TESTS "Build EmbedR tests" ${PROJECT_IS_TOP_LEVEL})
 option(EMBEDR_BUILD_DOCS "Build EmbedR docs target" ${PROJECT_IS_TOP_LEVEL})
+option(EMBEDR_USE_SYSTEM_NLOHMANN_JSON "Use preinstalled nlohmann_json instead of FetchContent" OFF)
 
-include(FetchContent)
-FetchContent_Declare(
-  nlohmann_json
-  URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_MakeAvailable(nlohmann_json)
+if(EMBEDR_USE_SYSTEM_NLOHMANN_JSON)
+  find_package(nlohmann_json 3.11.0 CONFIG REQUIRED)
+else()
+  include(FetchContent)
+  FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_MakeAvailable(nlohmann_json)
+endif()
 
 set(R_HOME "" CACHE PATH "Path to R home (for example /Library/Frameworks/R.framework/Resources)")
 if(NOT R_HOME AND DEFINED ENV{R_HOME} AND NOT "$ENV{R_HOME}" STREQUAL "")
   set(R_HOME "$ENV{R_HOME}")
+endif()
+if(WIN32 AND NOT R_HOME)
+  set(_R_HOME_WIN_HINTS
+    "C:/Program Files/R/R-4.6.0"
+    "C:/Program Files/R/R-4.5.0"
+    "C:/Program Files/R/R-4.4.0"
+    "C:/Program Files/R/R-4.3.0"
+    "C:/Program Files/R/R-4.2.0"
+  )
+  foreach(_hint IN LISTS _R_HOME_WIN_HINTS)
+    if(EXISTS "${_hint}")
+      set(R_HOME "${_hint}")
+      break()
+    endif()
+  endforeach()
 endif()
 
 find_path(R_INCLUDE_DIR
@@ -29,15 +49,17 @@ find_path(R_INCLUDE_DIR
   PATHS
     "/Library/Frameworks/R.framework/Headers"
     "/Library/Frameworks/R.framework/Resources/include"
+    "/usr/share/R/include"
     "/usr/lib/R/include"
     "/usr/local/lib/R/include"
+    "C:/Program Files/R/*/include"
   REQUIRED
 )
 
 if(NOT R_HOME)
   if(R_INCLUDE_DIR MATCHES "R\\.framework/Headers$")
     set(R_HOME "/Library/Frameworks/R.framework/Resources")
-  elseif(R_INCLUDE_DIR MATCHES "/include$")
+  elseif(R_INCLUDE_DIR MATCHES "([/\\\\])include$")
     get_filename_component(R_HOME "${R_INCLUDE_DIR}" DIRECTORY)
   endif()
 endif()
@@ -47,9 +69,13 @@ find_library(R_LIBRARY
   HINTS
     "${R_HOME}/lib"
     "${R_HOME}/lib/x86_64"
+    "${R_HOME}/lib/x64"
     "${R_HOME}/bin/x64"
   PATHS
     "/Library/Frameworks"
+    "/usr/lib/R/lib"
+    "/usr/local/lib/R/lib"
+    "C:/Program Files/R/*/bin/x64"
   REQUIRED
 )
 

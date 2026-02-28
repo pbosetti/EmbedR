@@ -62,11 +62,13 @@ public:
 
   /**
    * @brief Construct using default options.
+   * @throws std::runtime_error if R home cannot be resolved/validated or R initialization fails.
    */
   RInterpreter();
   /**
    * @brief Construct with explicit startup options.
    * @param options Startup configuration.
+   * @throws std::runtime_error if configured paths are invalid, environment setup fails, or R initialization fails.
    */
   explicit RInterpreter(Options options);
   /**
@@ -82,6 +84,8 @@ public:
   /**
    * @brief Check if R home can be resolved from options/env/defaults.
    * @return True if R can be located.
+   *
+   * This method does not initialize R.
    */
   static bool can_find_r();
 
@@ -115,6 +119,7 @@ public:
    * @param height Output height in pixels.
    * @param dpi Resolution used for PNG and PDF size conversion.
    * @return Raw bytes of the generated file.
+   * @throws std::invalid_argument if `width`, `height`, or `dpi` are non-positive.
    * @throws std::runtime_error on plotting or I/O errors.
    */
   std::vector<std::uint8_t> render_plot(const std::string& plot_code,
