@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <utility>
+#include <sstream>
 #include <string>
 #include <variant>
 #include <vector>
@@ -19,6 +21,16 @@ namespace EmbedR {
  */
 class RInterpreter {
 public:
+  /**
+   * @brief Output routing policy for R console text.
+   */
+  enum class OutputMode {
+    /** @brief Forward output to process stdout/stderr. */
+    Stdout,
+    /** @brief Append output to internal stdout/stderr string streams owned by the instance. */
+    Buffer
+  };
+
   /**
    * @brief Supported output formats for generated plots.
    */
@@ -41,6 +53,8 @@ public:
     bool auto_load_current_dir_renv = true;
     /** @brief Directory used when searching for environment files. */
     std::filesystem::path working_directory = std::filesystem::current_path();
+    /** @brief Destination for R console output emitted during evaluations/sourcing. */
+    OutputMode output_mode = OutputMode::Stdout;
   };
 
   /**
@@ -71,6 +85,19 @@ public:
    * @throws std::runtime_error if configured paths are invalid, environment setup fails, or R initialization fails.
    */
   explicit RInterpreter(Options options);
+  /**
+   * @brief Construct and source an R script immediately after startup.
+   * @param startup_script Path to an R script file.
+   * @throws std::runtime_error if startup fails or script sourcing fails.
+   */
+  explicit RInterpreter(const std::filesystem::path& startup_script);
+  /**
+   * @brief Construct with options and source an R script immediately after startup.
+   * @param options Startup configuration.
+   * @param startup_script Path to an R script file.
+   * @throws std::runtime_error if startup fails or script sourcing fails.
+   */
+  RInterpreter(Options options, const std::filesystem::path& startup_script);
   /**
    * @brief Shut down embedded R when the last instance is destroyed.
    */
@@ -103,6 +130,30 @@ public:
    * @throws std::runtime_error on parse or runtime errors.
    */
   nlohmann::json eval_json(const std::string& r_code) const;
+
+  /**
+   * @brief Read captured stdout buffer as a string.
+   * @return Buffer contents; empty if output mode is not buffer or no output was captured.
+   */
+  std::string get_stdout_buffer() const;
+
+  /**
+   * @brief Read captured stderr buffer as a string.
+   * @return Buffer contents; empty if output mode is not buffer or no output was captured.
+   */
+  std::string get_stderr_buffer() const;
+
+  /**
+   * @brief Clear captured stdout/stderr buffers.
+   */
+  void clear_output_buffers() const;
+
+  /**
+   * @brief Source an R script file in the global environment.
+   * @param script_path Path to the script file.
+   * @throws std::runtime_error if the script does not exist, is not a file, or sourcing fails.
+   */
+  void source_script(const std::filesystem::path& script_path) const;
 
   /**
    * @brief Assign a JSON value into R global environment as vectors/lists.
@@ -141,9 +192,15 @@ private:
   static SEXP json_to_sexp(const nlohmann::json& value);
 
   static std::string get_last_r_error();
+  static void source_script_unlocked(const std::filesystem::path& script_path);
   static SEXP eval_to_sexp(const std::string& r_code);
+  static void start_output_capture_unlocked();
+  static std::pair<std::string, std::string> stop_output_capture_unlocked();
+  void append_captured_output_unlocked(const std::pair<std::string, std::string>& captured) const;
 
   Options options_;
+  mutable std::stringstream stdout_stream_;
+  mutable std::stringstream stderr_stream_;
 
   static bool is_r_initialized_;
 };

@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <variant>
@@ -84,6 +86,68 @@ bool test_plot_png_and_pdf(RInterpreter& r) {
   return expect_true(png_ok && pdf_ok, "plot output signatures mismatch");
 }
 
+bool test_source_script_method(RInterpreter& r) {
+  const auto path = std::filesystem::temp_directory_path() / "embedr_source_method_test.R";
+  {
+    std::ofstream out(path);
+    out << "method_loaded_value <- 123L\n";
+  }
+
+  r.source_script(path);
+  std::filesystem::remove(path);
+
+  const auto value = r.eval("method_loaded_value");
+  if (std::holds_alternative<std::int64_t>(value)) {
+    return expect_true(std::get<std::int64_t>(value) == 123, "source_script method value mismatch");
+  }
+  if (std::holds_alternative<double>(value)) {
+    return expect_true(std::fabs(std::get<double>(value) - 123.0) < 1e-12, "source_script method value mismatch");
+  }
+  std::cerr << "FAILED: source_script method type mismatch\n";
+  return false;
+}
+
+bool test_source_script_ctor(const RInterpreter::Options& options) {
+  const auto path = std::filesystem::temp_directory_path() / "embedr_source_ctor_test.R";
+  {
+    std::ofstream out(path);
+    out << "ctor_loaded_value <- 456L\n";
+  }
+
+  RInterpreter with_script(options, path);
+  std::filesystem::remove(path);
+
+  const auto value = with_script.eval("ctor_loaded_value");
+  if (std::holds_alternative<std::int64_t>(value)) {
+    return expect_true(std::get<std::int64_t>(value) == 456, "source ctor value mismatch");
+  }
+  if (std::holds_alternative<double>(value)) {
+    return expect_true(std::fabs(std::get<double>(value) - 456.0) < 1e-12, "source ctor value mismatch");
+  }
+  std::cerr << "FAILED: source ctor type mismatch\n";
+  return false;
+}
+
+bool test_console_buffer_capture(const RInterpreter::Options& base_options) {
+  RInterpreter::Options options = base_options;
+  options.output_mode = RInterpreter::OutputMode::Buffer;
+
+  RInterpreter buffered(options);
+  buffered.clear_output_buffers();
+  (void)buffered.eval("cat('out-line\\n'); message('err-line')");
+
+  const auto stdout_text = buffered.get_stdout_buffer();
+  const auto stderr_text = buffered.get_stderr_buffer();
+  const bool stdout_ok = stdout_text.find("out-line") != std::string::npos;
+  const bool stderr_ok = stderr_text.find("err-line") != std::string::npos;
+  if (!stdout_ok || !stderr_ok) {
+    std::cerr << "FAILED: console buffer capture mismatch\n";
+    std::cerr << "stdout=[" << stdout_text << "]\n";
+    std::cerr << "stderr=[" << stderr_text << "]\n";
+  }
+  return expect_true(stdout_ok && stderr_ok, "console buffer capture mismatch");
+}
+
 }  // namespace
 
 int main() {
@@ -103,6 +167,9 @@ int main() {
     ok = test_list_to_json(r) && ok;
     ok = test_json_to_list(r) && ok;
     ok = test_plot_png_and_pdf(r) && ok;
+    ok = test_source_script_method(r) && ok;
+    ok = test_source_script_ctor(options) && ok;
+    ok = test_console_buffer_capture(options) && ok;
 
     if (!ok) {
       return 1;

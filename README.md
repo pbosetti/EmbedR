@@ -106,6 +106,10 @@ Main header: `include/EmbedR.hpp`
 - `EmbedR::RInterpreter::RValue`
 - `EmbedR::RInterpreter::eval(...)`
 - `EmbedR::RInterpreter::eval_json(...)`
+- `EmbedR::RInterpreter::source_script(...)`
+- `EmbedR::RInterpreter::get_stdout_buffer(...)`
+- `EmbedR::RInterpreter::get_stderr_buffer(...)`
+- `EmbedR::RInterpreter::clear_output_buffers(...)`
 - `EmbedR::RInterpreter::assign_json_as_list(...)`
 - `EmbedR::RInterpreter::render_plot(...)`
 

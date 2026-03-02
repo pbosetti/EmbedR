@@ -207,12 +207,61 @@ RInterpreter::RInterpreter(Options options) : options_(std::move(options)) {
   const auto r_home = find_r_home(options_.r_home);
   const auto renv_file = find_renv_file(options_);
 
+  bool initialized_here = false;
   if (!is_r_initialized_) {
     initialize_r(r_home, renv_file);
     is_r_initialized_ = true;
+    initialized_here = true;
   }
 
-  ++g_instance_count;
+  try {
+    ++g_instance_count;
+  } catch (...) {
+    if (initialized_here) {
+      Rf_endEmbeddedR(0);
+      is_r_initialized_ = false;
+    }
+    throw;
+  }
+}
+
+RInterpreter::RInterpreter(const std::filesystem::path& startup_script) : RInterpreter(Options{}, startup_script) {
+}
+
+RInterpreter::RInterpreter(Options options, const std::filesystem::path& startup_script) : options_(std::move(options)) {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+
+  const auto r_home = find_r_home(options_.r_home);
+  const auto renv_file = find_renv_file(options_);
+
+  bool initialized_here = false;
+  if (!is_r_initialized_) {
+    initialize_r(r_home, renv_file);
+    is_r_initialized_ = true;
+    initialized_here = true;
+  }
+  try {
+    if (options_.output_mode == OutputMode::Buffer) {
+      start_output_capture_unlocked();
+    }
+    source_script_unlocked(startup_script);
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
+    ++g_instance_count;
+  } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
+    if (initialized_here) {
+      Rf_endEmbeddedR(0);
+      is_r_initialized_ = false;
+    }
+    throw;
+  }
 }
 
 RInterpreter::~RInterpreter() {
@@ -238,20 +287,93 @@ bool RInterpreter::can_find_r() {
 
 RInterpreter::RValue RInterpreter::eval(const std::string& r_code) const {
   std::lock_guard<std::mutex> lock(g_r_mutex);
-  SEXP result = eval_to_sexp(r_code);
-  PROTECT(result);
-  const auto converted = sexp_to_value(result);
-  UNPROTECT(1);
-  return converted;
+
+  if (options_.output_mode == OutputMode::Buffer) {
+    start_output_capture_unlocked();
+  }
+  try {
+    SEXP result = eval_to_sexp(r_code);
+    PROTECT(result);
+    const auto converted = sexp_to_value(result);
+    UNPROTECT(1);
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
+    return converted;
+  } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
+    throw;
+  }
 }
 
 nlohmann::json RInterpreter::eval_json(const std::string& r_code) const {
   std::lock_guard<std::mutex> lock(g_r_mutex);
-  SEXP result = eval_to_sexp(r_code);
-  PROTECT(result);
-  const auto converted = sexp_to_json(result);
-  UNPROTECT(1);
-  return converted;
+
+  if (options_.output_mode == OutputMode::Buffer) {
+    start_output_capture_unlocked();
+  }
+  try {
+    SEXP result = eval_to_sexp(r_code);
+    PROTECT(result);
+    const auto converted = sexp_to_json(result);
+    UNPROTECT(1);
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
+    return converted;
+  } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
+    throw;
+  }
+}
+
+std::string RInterpreter::get_stdout_buffer() const {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+  return stdout_stream_.str();
+}
+
+std::string RInterpreter::get_stderr_buffer() const {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+  return stderr_stream_.str();
+}
+
+void RInterpreter::clear_output_buffers() const {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+  stdout_stream_.str("");
+  stdout_stream_.clear();
+  stderr_stream_.str("");
+  stderr_stream_.clear();
+}
+
+void RInterpreter::source_script(const std::filesystem::path& script_path) const {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+  if (options_.output_mode == OutputMode::Buffer) {
+    start_output_capture_unlocked();
+  }
+  try {
+    source_script_unlocked(script_path);
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
+  } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
+    throw;
+  }
 }
 
 void RInterpreter::assign_json_as_list(const std::string& name, const nlohmann::json& value) const {
@@ -531,6 +653,74 @@ SEXP RInterpreter::json_to_sexp(const nlohmann::json& value) {
   return out;
 }
 
+void RInterpreter::start_output_capture_unlocked() {
+  (void)eval_to_sexp(".EmbedR__stdout_buf <- character()");
+  (void)eval_to_sexp(".EmbedR__stderr_buf <- character()");
+  (void)eval_to_sexp(".EmbedR__stdout_con <- textConnection('.EmbedR__stdout_buf', open='w', local=FALSE)");
+  (void)eval_to_sexp("sink(.EmbedR__stdout_con, type='output')");
+  (void)eval_to_sexp(".EmbedR__stderr_con <- textConnection('.EmbedR__stderr_buf', open='w', local=FALSE)");
+  (void)eval_to_sexp("sink(.EmbedR__stderr_con, type='message')");
+}
+
+std::pair<std::string, std::string> RInterpreter::stop_output_capture_unlocked() {
+  (void)eval_to_sexp("sink(type='message')");
+  (void)eval_to_sexp("close(.EmbedR__stderr_con)");
+  (void)eval_to_sexp("sink(type='output')");
+  (void)eval_to_sexp("close(.EmbedR__stdout_con)");
+
+  const auto json_to_text = [](const nlohmann::json& value) -> std::string {
+    if (value.is_string()) {
+      return value.get<std::string>();
+    }
+    if (!value.is_array()) {
+      return {};
+    }
+
+    std::string out;
+    bool first = true;
+    for (const auto& item : value) {
+      if (!first) {
+        out.push_back('\n');
+      }
+      first = false;
+      if (item.is_string()) {
+        out += item.get<std::string>();
+      } else {
+        out += item.dump();
+      }
+    }
+    return out;
+  };
+
+  SEXP stdout_value = eval_to_sexp(".EmbedR__stdout_buf");
+  PROTECT(stdout_value);
+  const auto stdout_json = sexp_to_json(stdout_value);
+  UNPROTECT(1);
+
+  SEXP stderr_value = eval_to_sexp(".EmbedR__stderr_buf");
+  PROTECT(stderr_value);
+  const auto stderr_json = sexp_to_json(stderr_value);
+  UNPROTECT(1);
+
+  (void)eval_to_sexp("rm(.EmbedR__stdout_buf, .EmbedR__stderr_buf, .EmbedR__stdout_con, .EmbedR__stderr_con, inherits=TRUE)");
+  return {json_to_text(stdout_json), json_to_text(stderr_json)};
+}
+
+void RInterpreter::append_captured_output_unlocked(const std::pair<std::string, std::string>& captured) const {
+  if (!captured.first.empty()) {
+    stdout_stream_ << captured.first;
+    if (captured.first.back() != '\n') {
+      stdout_stream_ << '\n';
+    }
+  }
+  if (!captured.second.empty()) {
+    stderr_stream_ << captured.second;
+    if (captured.second.back() != '\n') {
+      stderr_stream_ << '\n';
+    }
+  }
+}
+
 std::string RInterpreter::get_last_r_error() {
   ParseStatus status = PARSE_NULL;
   int error = 0;
@@ -545,6 +735,18 @@ std::string RInterpreter::get_last_r_error() {
   }
   UNPROTECT(2);
   return message;
+}
+
+void RInterpreter::source_script_unlocked(const std::filesystem::path& script_path) {
+  if (!std::filesystem::exists(script_path)) {
+    throw std::runtime_error("Script path does not exist: " + script_path.string());
+  }
+  if (!std::filesystem::is_regular_file(script_path)) {
+    throw std::runtime_error("Script path is not a regular file: " + script_path.string());
+  }
+
+  const auto script_string = escape_r_string(std::filesystem::absolute(script_path).string());
+  (void)eval_to_sexp("source('" + script_string + "', local = .GlobalEnv)");
 }
 
 SEXP RInterpreter::eval_to_sexp(const std::string& r_code) {
