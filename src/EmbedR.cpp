@@ -745,8 +745,17 @@ void RInterpreter::source_script_unlocked(const std::filesystem::path& script_pa
     throw std::runtime_error("Script path is not a regular file: " + script_path.string());
   }
 
-  const auto script_string = escape_r_string(std::filesystem::absolute(script_path).string());
-  (void)eval_to_sexp("source('" + script_string + "', local = .GlobalEnv)");
+  std::ifstream file(script_path, std::ios::binary);
+  if (!file.is_open()) {
+    throw std::runtime_error("Failed to open script: " + script_path.string());
+  }
+
+  const std::string script_text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  try {
+    (void)eval_to_sexp(script_text);
+  } catch (const std::exception& ex) {
+    throw std::runtime_error("Failed to source script '" + script_path.string() + "': " + ex.what());
+  }
 }
 
 SEXP RInterpreter::eval_to_sexp(const std::string& r_code) {

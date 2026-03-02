@@ -128,6 +128,24 @@ bool test_source_script_ctor(const RInterpreter::Options& options) {
   return false;
 }
 
+bool test_source_script_syntax_error(RInterpreter& r) {
+  const auto path = std::filesystem::temp_directory_path() / "embedr_source_syntax_error_test.R";
+  {
+    std::ofstream out(path);
+    out << "broken <- function(x) {\n";
+    out << "  x + 1\n";
+  }
+
+  bool threw = false;
+  try {
+    r.source_script(path);
+  } catch (const std::exception&) {
+    threw = true;
+  }
+  std::filesystem::remove(path);
+  return expect_true(threw, "source_script did not throw on syntax error");
+}
+
 bool test_console_buffer_capture(const RInterpreter::Options& base_options) {
   RInterpreter::Options options = base_options;
   options.output_mode = RInterpreter::OutputMode::Buffer;
@@ -169,6 +187,7 @@ int main() {
     ok = test_plot_png_and_pdf(r) && ok;
     ok = test_source_script_method(r) && ok;
     ok = test_source_script_ctor(options) && ok;
+    ok = test_source_script_syntax_error(r) && ok;
     ok = test_console_buffer_capture(options) && ok;
 
     if (!ok) {
