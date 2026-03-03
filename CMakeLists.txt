@@ -113,6 +113,26 @@ if(EMBEDR_BUILD_TESTS)
   add_executable(EmbedR_tests tests/EmbedRTests.cpp)
   target_link_libraries(EmbedR_tests PRIVATE EmbedR::EmbedR)
   add_test(NAME EmbedR_tests COMMAND EmbedR_tests)
+
+  find_path(READLINE_INCLUDE_DIR
+    NAMES readline/readline.h
+  )
+  find_library(READLINE_LIBRARY
+    NAMES readline edit
+  )
+
+  if(NOT READLINE_INCLUDE_DIR OR NOT READLINE_LIBRARY)
+    message(FATAL_ERROR "readline development files are required to build EmbedR_repl.")
+  endif()
+
+  find_package(Curses)
+
+  add_executable(EmbedR_repl tests/EmbedRRepl.cpp)
+  target_include_directories(EmbedR_repl PRIVATE ${READLINE_INCLUDE_DIR})
+  target_link_libraries(EmbedR_repl PRIVATE EmbedR::EmbedR ${READLINE_LIBRARY})
+  if(CURSES_FOUND)
+    target_link_libraries(EmbedR_repl PRIVATE ${CURSES_LIBRARIES})
+  endif()
 endif()
 
 if(EMBEDR_BUILD_DOCS)
