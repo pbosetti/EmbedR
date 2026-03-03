@@ -41,3 +41,8 @@ _deps/
 # OS files
 .DS_Store
 Thumbs.db
+
+
+.Rprofile
+renv.lock
+renv

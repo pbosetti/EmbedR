@@ -127,11 +127,11 @@ if(EMBEDR_BUILD_TESTS)
 
   find_package(Curses)
 
-  add_executable(EmbedR_repl tests/EmbedRRepl.cpp)
-  target_include_directories(EmbedR_repl PRIVATE ${READLINE_INCLUDE_DIR})
-  target_link_libraries(EmbedR_repl PRIVATE EmbedR::EmbedR ${READLINE_LIBRARY})
+  add_executable(rrepl tests/EmbedRRepl.cpp)
+  target_include_directories(rrepl PRIVATE ${READLINE_INCLUDE_DIR})
+  target_link_libraries(rrepl PRIVATE EmbedR::EmbedR ${READLINE_LIBRARY})
   if(CURSES_FOUND)
-    target_link_libraries(EmbedR_repl PRIVATE ${CURSES_LIBRARIES})
+    target_link_libraries(rrepl PRIVATE ${CURSES_LIBRARIES})
   endif()
 endif()
 

@@ -215,8 +215,21 @@ RInterpreter::RInterpreter(Options options) : options_(std::move(options)) {
   }
 
   try {
+    if (options_.output_mode == OutputMode::Buffer) {
+      start_output_capture_unlocked();
+    }
+    restore_renv_if_needed(options_);
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
     ++g_instance_count;
   } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
     if (initialized_here) {
       Rf_endEmbeddedR(0);
       is_r_initialized_ = false;
@@ -244,6 +257,7 @@ RInterpreter::RInterpreter(Options options, const std::filesystem::path& startup
     if (options_.output_mode == OutputMode::Buffer) {
       start_output_capture_unlocked();
     }
+    restore_renv_if_needed(options_);
     source_script_unlocked(startup_script);
     if (options_.output_mode == OutputMode::Buffer) {
       append_captured_output_unlocked(stop_output_capture_unlocked());
@@ -478,7 +492,41 @@ std::optional<std::filesystem::path> RInterpreter::find_renv_file(const Options&
     return candidate_renv;
   }
 
+  const auto candidate_renv_plain = options.working_directory / "renv";
+  if (std::filesystem::is_regular_file(candidate_renv_plain)) {
+    return candidate_renv_plain;
+  }
+
+  if (std::filesystem::is_directory(candidate_renv_plain)) {
+    const auto nested_renviron = candidate_renv_plain / ".Renviron";
+    if (std::filesystem::is_regular_file(nested_renviron)) {
+      return nested_renviron;
+    }
+
+    const auto nested_renv = candidate_renv_plain / ".Renv";
+    if (std::filesystem::is_regular_file(nested_renv)) {
+      return nested_renv;
+    }
+  }
+
   return std::nullopt;
+}
+
+void RInterpreter::restore_renv_if_needed(const Options& options) {
+  if (!options.auto_load_current_dir_renv) {
+    return;
+  }
+
+  const auto renv_lock = options.working_directory / "renv.lock";
+  if (!std::filesystem::is_regular_file(renv_lock)) {
+    return;
+  }
+
+  const auto escaped_project_path = escape_r_string(options.working_directory.string());
+  (void)eval_to_sexp(
+      "if (!requireNamespace('renv', quietly=TRUE)) stop(\"renv.lock found but package 'renv' is not installed\"); "
+      "renv::restore(project='" +
+      escaped_project_path + "', prompt=FALSE)");
 }
 
 void RInterpreter::initialize_r(const std::filesystem::path& r_home,

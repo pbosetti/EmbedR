@@ -182,6 +182,7 @@ public:
 private:
   static std::filesystem::path find_r_home(const std::optional<std::filesystem::path>& configured_r_home);
   static std::optional<std::filesystem::path> find_renv_file(const Options& options);
+  static void restore_renv_if_needed(const Options& options);
   static void initialize_r(const std::filesystem::path& r_home,
                            const std::optional<std::filesystem::path>& renv_file);
 
