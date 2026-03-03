@@ -8,6 +8,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(EMBEDR_BUILD_TESTS "Build EmbedR tests" ${PROJECT_IS_TOP_LEVEL})
 option(EMBEDR_BUILD_DOCS "Build EmbedR docs target" ${PROJECT_IS_TOP_LEVEL})
 option(EMBEDR_USE_SYSTEM_NLOHMANN_JSON "Use preinstalled nlohmann_json instead of FetchContent" OFF)
+if (UNIX AND NOT APPLE)
+  execute_process(
+    COMMAND R RHOME
+    OUTPUT_VARIABLE _EMBEDR_RHOME_OUTPUT
+    RESULT_VARIABLE _EMBEDR_RHOME_RESULT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(_EMBEDR_RHOME_RESULT EQUAL 0 AND NOT "${_EMBEDR_RHOME_OUTPUT}" STREQUAL "")
+    message(STATUS "Detected R home: ${_EMBEDR_RHOME_OUTPUT}")
+    set(R_HOME "${_EMBEDR_RHOME_OUTPUT}")
+  else()
+    message(WARNING "Could not detect R home. You may need to set R_HOME environment variable or CMake cache variable.")
+  endif()
+endif()
 
 if(NOT TARGET nlohmann_json::nlohmann_json)
   if(EMBEDR_USE_SYSTEM_NLOHMANN_JSON)

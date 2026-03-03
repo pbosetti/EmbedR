@@ -547,6 +547,10 @@ void RInterpreter::initialize_r(const std::filesystem::path& r_home,
   char arg3[] = "--vanilla";
   char* argv[] = {arg0, arg1, arg2, arg3};
 
+  if (!std::filesystem::exists(r_home / "library" / "base")) {
+    throw std::runtime_error("\nInvalid R home, missing base package under " + r_home.string() + "\nMake sure the path points to a valid R installation," + "\nsetting R_HOME=\"$(R RHOME)\" should fix this.");
+  }
+
   Rf_initEmbeddedR(4, argv);
 }
 
