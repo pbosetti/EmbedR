@@ -93,6 +93,10 @@ target_include_directories(EmbedR
     $<BUILD_INTERFACE:${R_INCLUDE_DIR}>
 )
 
+if(UNIX AND NOT APPLE)
+  target_compile_options(EmbedR PRIVATE -fPIC)
+endif()
+
 target_link_libraries(EmbedR
   PUBLIC
     nlohmann_json::nlohmann_json
