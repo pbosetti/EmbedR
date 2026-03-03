@@ -76,8 +76,9 @@ int main() {
     RInterpreter interpreter;
 
     std::cout << "EmbedR REPL\n";
-    std::cout << "Type one or more lines of R code. Press CTRL-D to evaluate the current block.\n";
-    std::cout << "Press CTRL-D on an empty prompt to exit.\n";
+    std::cout << "Press Enter to execute the current block.\n";
+    std::cout << "Append \\ at end of line to continue on a new line.\n";
+    std::cout << "Press Ctrl+D to exit.\n";
 
     std::vector<std::string> buffer;
 
@@ -86,37 +87,49 @@ int main() {
       char* raw = readline(prompt);
 
       if (raw == nullptr) {
-        if (buffer.empty()) {
-          std::cout << "\n";
-          break;
-        }
-
-        std::string code;
-        for (std::size_t i = 0; i < buffer.size(); ++i) {
-          if (i > 0) {
-            code.push_back('\n');
-          }
-          code += buffer[i];
-        }
-        buffer.clear();
-
-        try {
-          const auto result = interpreter.eval(code);
-          std::cout << to_string_value(result) << "\n";
-        } catch (const std::exception& ex) {
-          std::cerr << ex.what() << "\n";
-        }
-        continue;
+        std::cout << "\n";
+        break;
       }
 
       std::string line(raw);
       std::free(raw);
 
-      if (!line.empty()) {
-        add_history(line.c_str());
+      bool continue_multiline = false;
+      if (!line.empty() && line.back() == '\\') {
+        line.pop_back();
+        continue_multiline = true;
       }
 
       buffer.push_back(line);
+      if (continue_multiline) {
+        continue;
+      }
+
+      std::string code;
+      for (std::size_t i = 0; i < buffer.size(); ++i) {
+        if (i > 0) {
+          code.push_back('\n');
+        }
+        code += buffer[i];
+      }
+      if (!buffer.empty()) {
+        code.push_back('\n');
+      }
+      code += line;
+      buffer.clear();
+
+      if (code.empty()) {
+        continue;
+      }
+
+      add_history(code.c_str());
+
+      try {
+        const auto result = interpreter.eval(code);
+        std::cout << to_string_value(result) << "\n";
+      } catch (const std::exception& ex) {
+        std::cerr << ex.what() << "\n";
+      }
     }
 
     return 0;
