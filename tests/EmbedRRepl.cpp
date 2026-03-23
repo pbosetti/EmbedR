@@ -10,8 +10,10 @@
 #include <variant>
 #include <vector>
 
+#ifdef HAVE_READLINE
 #include <readline/history.h>
 #include <readline/readline.h>
+#endif
 
 namespace {
 
@@ -73,15 +75,19 @@ class HistorySession {
 public:
   explicit HistorySession(std::filesystem::path history_path)
       : history_path_(std::move(history_path)) {
+#ifdef HAVE_READLINE
     using_history();
     (void)read_history(history_path_.string().c_str());
+#endif
   }
 
   ~HistorySession() {
+#ifdef HAVE_READLINE
     try {
       (void)write_history(history_path_.string().c_str());
     } catch (...) {
     }
+#endif
   }
 
 private:
@@ -199,6 +205,7 @@ int main(int argc, char **argv) {
 
     while (true) {
       const char *prompt = buffer.empty() ? "R> " : ">> ";
+#ifdef HAVE_READLINE
       char *raw = readline(prompt);
 
       if (raw == nullptr) {
@@ -208,6 +215,14 @@ int main(int argc, char **argv) {
 
       std::string line(raw);
       std::free(raw);
+#else
+      std::cout << prompt << std::flush;
+      std::string line;
+      if (!std::getline(std::cin, line)) {
+        std::cout << "\n";
+        break;
+      }
+#endif
 
       const bool continue_multiline =
           consume_continue_marker(line, continue_token);
@@ -233,7 +248,9 @@ int main(int argc, char **argv) {
         continue;
       }
 
+#ifdef HAVE_READLINE
       add_history(code.c_str());
+#endif
 
       try {
         const auto result = interpreter.eval(code);

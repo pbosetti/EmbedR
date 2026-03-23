@@ -203,24 +203,28 @@ if(EMBEDR_BUILD_TESTS)
   target_link_libraries(EmbedR_tests PRIVATE EmbedR::EmbedR)
   add_test(NAME EmbedR_tests COMMAND EmbedR_tests)
 
-  find_path(READLINE_INCLUDE_DIR
-    NAMES readline/readline.h
-  )
-  find_library(READLINE_LIBRARY
-    NAMES readline edit
-  )
+  if(NOT WIN32)
+    find_path(READLINE_INCLUDE_DIR
+      NAMES readline/readline.h
+    )
+    find_library(READLINE_LIBRARY
+      NAMES readline edit
+    )
+  endif()
+
+  add_executable(rrepl tests/EmbedRRepl.cpp)
+  target_link_libraries(rrepl PRIVATE EmbedR::EmbedR)
 
   if(READLINE_INCLUDE_DIR AND READLINE_LIBRARY)
     find_package(Curses)
-
-    add_executable(rrepl tests/EmbedRRepl.cpp)
+    target_compile_definitions(rrepl PRIVATE HAVE_READLINE)
     target_include_directories(rrepl PRIVATE ${READLINE_INCLUDE_DIR})
-    target_link_libraries(rrepl PRIVATE EmbedR::EmbedR ${READLINE_LIBRARY})
+    target_link_libraries(rrepl PRIVATE ${READLINE_LIBRARY})
     if(CURSES_FOUND)
       target_link_libraries(rrepl PRIVATE ${CURSES_LIBRARIES})
     endif()
   else()
-    message(STATUS "readline not found – skipping EmbedR_repl (rrepl) target.")
+    message(STATUS "readline not found – building rrepl without history support.")
   endif()
 endif()
 
