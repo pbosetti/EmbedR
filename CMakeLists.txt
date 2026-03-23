@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(EMBEDR_BUILD_TESTS "Build EmbedR tests" ${PROJECT_IS_TOP_LEVEL})
 option(EMBEDR_BUILD_DOCS "Build EmbedR docs target" ${PROJECT_IS_TOP_LEVEL})
 option(EMBEDR_USE_SYSTEM_NLOHMANN_JSON "Use preinstalled nlohmann_json instead of FetchContent" OFF)
-if (UNIX AND NOT APPLE)
+if (UNIX)
   execute_process(
     COMMAND R RHOME
     OUTPUT_VARIABLE _EMBEDR_RHOME_OUTPUT

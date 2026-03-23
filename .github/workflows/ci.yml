@@ -50,5 +50,9 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Set R_HOME (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: echo "R_HOME=$(R RHOME)" >> "$GITHUB_ENV"
+
       - name: Test
         run: ctest --test-dir build --output-on-failure
