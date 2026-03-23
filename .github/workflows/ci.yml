@@ -37,6 +37,9 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake ninja readline
 
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
       - name: Configure (Unix)
         if: runner.os != 'Windows'
         shell: bash
