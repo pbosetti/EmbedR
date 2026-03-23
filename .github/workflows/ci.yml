@@ -48,7 +48,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $rHome = (R RHOME) | Out-String
+          $rHome = (R.exe RHOME) | Out-String
           $rHome = $rHome.Trim()
           $env:R_HOME = $rHome
           cmake -B build -DR_HOME="$rHome"
@@ -76,7 +76,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $rHome = (R RHOME) | Out-String
+          $rHome = (R.exe RHOME) | Out-String
           $rHome = $rHome.Trim()
           $env:R_HOME = $rHome
           $env:PATH = "$rHome\bin\x64;$env:PATH"
