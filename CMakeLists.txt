@@ -36,7 +36,23 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(nlohmann_json)
+    FetchContent_GetProperties(nlohmann_json SOURCE_DIR nlohmann_json_SOURCE_DIR)
+    set(EMBEDR_NLOHMANN_JSON_INCLUDE_DIR "${nlohmann_json_SOURCE_DIR}/include")
   endif()
+endif()
+
+if(NOT DEFINED EMBEDR_NLOHMANN_JSON_INCLUDE_DIR)
+  get_target_property(_EMBEDR_NLOHMANN_JSON_INTERFACE_DIRS nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
+  foreach(_dir IN LISTS _EMBEDR_NLOHMANN_JSON_INTERFACE_DIRS)
+    if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/nlohmann/json.hpp")
+      set(EMBEDR_NLOHMANN_JSON_INCLUDE_DIR "${_dir}")
+      break()
+    endif()
+  endforeach()
+endif()
+
+if(NOT DEFINED EMBEDR_NLOHMANN_JSON_INCLUDE_DIR)
+  message(FATAL_ERROR "Could not determine the nlohmann_json include directory.")
 endif()
 
 set(R_HOME "" CACHE PATH "Path to R home (for example /Library/Frameworks/R.framework/Resources)")
@@ -105,6 +121,7 @@ add_library(EmbedR::EmbedR ALIAS EmbedR)
 target_include_directories(EmbedR
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${EMBEDR_NLOHMANN_JSON_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${R_INCLUDE_DIR}>
 )
@@ -115,7 +132,6 @@ endif()
 
 target_link_libraries(EmbedR
   PUBLIC
-    nlohmann_json::nlohmann_json
     ${R_LIBRARY}
 )
 
@@ -186,7 +202,11 @@ install(TARGETS EmbedR
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING PATTERN "*.h"
+  FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
+
+install(DIRECTORY "${EMBEDR_NLOHMANN_JSON_INCLUDE_DIR}/nlohmann"
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 if(TARGET rrepl)

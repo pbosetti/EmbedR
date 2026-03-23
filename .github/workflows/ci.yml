@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-latest
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build r-base r-base-dev libreadline-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja r readline
+
+      - name: Configure
+        shell: bash
+        run: |
+          export R_HOME="$(R RHOME)"
+          cmake -B build -G Ninja
+
+      - name: Build
+        shell: bash
+        run: |
+          export R_HOME="$(R RHOME)"
+          cmake --build build
+
+      - name: Test
+        shell: bash
+        run: |
+          export R_HOME="$(R RHOME)"
+          ctest --test-dir build --output-on-failure
