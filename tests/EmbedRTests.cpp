@@ -74,6 +74,35 @@ bool test_json_to_list(RInterpreter& r) {
   return false;
 }
 
+bool test_function_call_with_json_argument(RInterpreter& r) {
+  (void)r.eval("my_function <- function(payload) list(sum = payload$a + payload$b[[2]], ok = payload$nested$ok); NULL");
+
+  const nlohmann::json input = {
+      {"a", 10},
+      {"b", nlohmann::json::array({1, 2, 3})},
+      {"nested", {{"ok", true}}},
+  };
+
+  const auto value = r.function("my_function")(input);
+  if (!std::holds_alternative<nlohmann::json>(value)) {
+    std::cerr << "FAILED: function call result type mismatch\n";
+    return false;
+  }
+
+  const auto& js = std::get<nlohmann::json>(value);
+  return expect_true(js["sum"] == 12 && js["ok"] == true, "function call result mismatch");
+}
+
+bool test_missing_function_throws(RInterpreter& r) {
+  bool threw = false;
+  try {
+    (void)r.function("missing_embedr_function")(nlohmann::json::object());
+  } catch (const std::exception&) {
+    threw = true;
+  }
+  return expect_true(threw, "missing function call did not throw");
+}
+
 bool test_plot_png_and_pdf(RInterpreter& r) {
   const std::string code = "plot(1:5, 1:5, type='l')";
 
@@ -184,6 +213,8 @@ int main() {
     ok = test_vector_eval(r) && ok;
     ok = test_list_to_json(r) && ok;
     ok = test_json_to_list(r) && ok;
+    ok = test_function_call_with_json_argument(r) && ok;
+    ok = test_missing_function_throws(r) && ok;
     ok = test_plot_png_and_pdf(r) && ok;
     ok = test_source_script_method(r) && ok;
     ok = test_source_script_ctor(options) && ok;

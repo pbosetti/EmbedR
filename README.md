@@ -6,6 +6,7 @@
 - conversion of base R objects to C++ scalar/container types
 - conversion of R lists to `nlohmann::json`
 - import of `nlohmann::json` into the R global environment as vectors/lists
+- invocation of R functions with `nlohmann::json` arguments converted to R vectors/lists
 - plot rendering to in-memory PNG or PDF bytes
 
 ## Requirements
@@ -84,6 +85,13 @@ int main() {
   r.assign_json_as_list("data", payload);
 
   auto result = r.eval_json("list(sum = data$x + 5L, labels = data$labels)");
+  (void)r.eval(
+    "my_function <- function(payload) {"
+    "  list(sum = payload$x + 5L, labels = payload$labels)"
+    "};"
+    "NULL"
+  );
+  auto function_result = r.function("my_function")(payload);
 
   auto png = r.render_plot(
     "plot(1:5, 1:5, type='l')",
@@ -97,6 +105,10 @@ int main() {
 }
 ```
 
+`RInterpreter::function(...)` returns a lightweight callable wrapper bound to the interpreter. Its
+`operator()(const nlohmann::json&)` converts JSON objects to named R lists, JSON arrays to R vectors
+or lists, and then evaluates the target function in `R_GlobalEnv`.
+
 ## Public API
 
 Main header: `include/EmbedR.hpp`
@@ -106,6 +118,8 @@ Main header: `include/EmbedR.hpp`
 - `EmbedR::RInterpreter::RValue`
 - `EmbedR::RInterpreter::eval(...)`
 - `EmbedR::RInterpreter::eval_json(...)`
+- `EmbedR::RInterpreter::function(...)`
+- `EmbedR::RInterpreter::Function`
 - `EmbedR::RInterpreter::source_script(...)`
 - `EmbedR::RInterpreter::get_stdout_buffer(...)`
 - `EmbedR::RInterpreter::get_stderr_buffer(...)`

@@ -351,6 +351,10 @@ nlohmann::json RInterpreter::eval_json(const std::string& r_code) const {
   }
 }
 
+RInterpreter::Function RInterpreter::function(std::string name) const {
+  return Function(*this, std::move(name));
+}
+
 std::string RInterpreter::get_stdout_buffer() const {
   std::lock_guard<std::mutex> lock(g_r_mutex);
   return stdout_stream_.str();
@@ -396,6 +400,88 @@ void RInterpreter::assign_json_as_list(const std::string& name, const nlohmann::
   SEXP r_value = json_to_sexp_internal(value, protect_count);
   Rf_defineVar(Rf_install(name.c_str()), r_value, R_GlobalEnv);
   UNPROTECT(protect_count);
+}
+
+RInterpreter::RValue RInterpreter::call_function(const std::string& name, const nlohmann::json& argument) const {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+
+  if (options_.output_mode == OutputMode::Buffer) {
+    start_output_capture_unlocked();
+  }
+  try {
+    int protect_count = 0;
+    (void)find_function_unlocked(name);
+    SEXP r_argument = json_to_sexp_internal(argument, protect_count);
+    SEXP call = PROTECT(Rf_lang2(Rf_install(name.c_str()), r_argument));
+    ++protect_count;
+
+    int error = 0;
+    SEXP result = R_tryEval(call, R_GlobalEnv, &error);
+    if (error) {
+      const auto message = get_last_r_error();
+      UNPROTECT(protect_count);
+      throw std::runtime_error("R function call error for '" + name + "': " + message);
+    }
+
+    PROTECT(result);
+    ++protect_count;
+    const auto converted = sexp_to_value(result);
+    UNPROTECT(protect_count);
+
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
+    return converted;
+  } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
+    throw;
+  }
+}
+
+nlohmann::json RInterpreter::call_function_json(const std::string& name, const nlohmann::json& argument) const {
+  std::lock_guard<std::mutex> lock(g_r_mutex);
+
+  if (options_.output_mode == OutputMode::Buffer) {
+    start_output_capture_unlocked();
+  }
+  try {
+    int protect_count = 0;
+    (void)find_function_unlocked(name);
+    SEXP r_argument = json_to_sexp_internal(argument, protect_count);
+    SEXP call = PROTECT(Rf_lang2(Rf_install(name.c_str()), r_argument));
+    ++protect_count;
+
+    int error = 0;
+    SEXP result = R_tryEval(call, R_GlobalEnv, &error);
+    if (error) {
+      const auto message = get_last_r_error();
+      UNPROTECT(protect_count);
+      throw std::runtime_error("R function call error for '" + name + "': " + message);
+    }
+
+    PROTECT(result);
+    ++protect_count;
+    const auto converted = sexp_to_json(result);
+    UNPROTECT(protect_count);
+
+    if (options_.output_mode == OutputMode::Buffer) {
+      append_captured_output_unlocked(stop_output_capture_unlocked());
+    }
+    return converted;
+  } catch (...) {
+    if (options_.output_mode == OutputMode::Buffer) {
+      try {
+        append_captured_output_unlocked(stop_output_capture_unlocked());
+      } catch (...) {
+      }
+    }
+    throw;
+  }
 }
 
 std::vector<std::uint8_t> RInterpreter::render_plot(const std::string& plot_code,
@@ -789,6 +875,19 @@ std::string RInterpreter::get_last_r_error() {
   return message;
 }
 
+SEXP RInterpreter::find_function_unlocked(const std::string& name) {
+  SEXP symbol = Rf_install(name.c_str());
+  SEXP function_ref = Rf_findVarInFrame(R_GlobalEnv, symbol);
+  if (function_ref == R_UnboundValue) {
+    throw std::runtime_error("R function not found: " + name);
+  }
+  const int type = TYPEOF(function_ref);
+  if (type != CLOSXP && type != BUILTINSXP && type != SPECIALSXP) {
+    throw std::runtime_error("R symbol is not callable: " + name);
+  }
+  return function_ref;
+}
+
 void RInterpreter::source_script_unlocked(const std::filesystem::path& script_path) {
   if (!std::filesystem::exists(script_path)) {
     throw std::runtime_error("Script path does not exist: " + script_path.string());
@@ -834,6 +933,18 @@ SEXP RInterpreter::eval_to_sexp(const std::string& r_code) {
 
   UNPROTECT(2);
   return result;
+}
+
+RInterpreter::Function::Function(const RInterpreter& interpreter, std::string name)
+    : interpreter_(&interpreter), name_(std::move(name)) {
+}
+
+RInterpreter::RValue RInterpreter::Function::operator()(const nlohmann::json& argument) const {
+  return interpreter_->call_function(name_, argument);
+}
+
+nlohmann::json RInterpreter::Function::eval_json(const nlohmann::json& argument) const {
+  return interpreter_->call_function_json(name_, argument);
 }
 
 }  // namespace EmbedR

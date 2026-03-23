@@ -21,6 +21,8 @@ namespace EmbedR {
  */
 class RInterpreter {
 public:
+  class Function;
+
   /**
    * @brief Output routing policy for R console text.
    */
@@ -132,6 +134,13 @@ public:
   nlohmann::json eval_json(const std::string& r_code) const;
 
   /**
+   * @brief Return a callable reference to an R function in the global environment.
+   * @param name Function symbol to resolve.
+   * @return Callable function wrapper bound to this interpreter.
+   */
+  Function function(std::string name) const;
+
+  /**
    * @brief Read captured stdout buffer as a string.
    * @return Buffer contents; empty if output mode is not buffer or no output was captured.
    */
@@ -179,6 +188,23 @@ public:
                                         int height = 600,
                                         int dpi = 96) const;
 
+  /**
+   * @brief Callable wrapper for an R function resolved through an interpreter instance.
+   */
+  class Function {
+  public:
+    RValue operator()(const nlohmann::json& argument) const;
+    nlohmann::json eval_json(const nlohmann::json& argument) const;
+
+  private:
+    friend class RInterpreter;
+
+    Function(const RInterpreter& interpreter, std::string name);
+
+    const RInterpreter* interpreter_;
+    std::string name_;
+  };
+
 private:
   static std::filesystem::path find_r_home(const std::optional<std::filesystem::path>& configured_r_home);
   static std::optional<std::filesystem::path> find_renv_file(const Options& options);
@@ -195,9 +221,12 @@ private:
   static std::string get_last_r_error();
   static void source_script_unlocked(const std::filesystem::path& script_path);
   static SEXP eval_to_sexp(const std::string& r_code);
+  static SEXP find_function_unlocked(const std::string& name);
   static void start_output_capture_unlocked();
   static std::pair<std::string, std::string> stop_output_capture_unlocked();
   void append_captured_output_unlocked(const std::pair<std::string, std::string>& captured) const;
+  RValue call_function(const std::string& name, const nlohmann::json& argument) const;
+  nlohmann::json call_function_json(const std::string& name, const nlohmann::json& argument) const;
 
   Options options_;
   mutable std::stringstream stdout_stream_;
