@@ -60,19 +60,11 @@ if(NOT R_HOME AND DEFINED ENV{R_HOME} AND NOT "$ENV{R_HOME}" STREQUAL "")
   set(R_HOME "$ENV{R_HOME}")
 endif()
 if(WIN32 AND NOT R_HOME)
-  set(_R_HOME_WIN_HINTS
-    "C:/Program Files/R/R-4.6.0"
-    "C:/Program Files/R/R-4.5.0"
-    "C:/Program Files/R/R-4.4.0"
-    "C:/Program Files/R/R-4.3.0"
-    "C:/Program Files/R/R-4.2.0"
-  )
-  foreach(_hint IN LISTS _R_HOME_WIN_HINTS)
-    if(EXISTS "${_hint}")
-      set(R_HOME "${_hint}")
-      break()
-    endif()
-  endforeach()
+  file(GLOB _R_HOME_WIN_CANDIDATES "C:/Program Files/R/R-*")
+  if(_R_HOME_WIN_CANDIDATES)
+    list(SORT _R_HOME_WIN_CANDIDATES ORDER DESCENDING)
+    list(GET _R_HOME_WIN_CANDIDATES 0 R_HOME)
+  endif()
 endif()
 
 find_path(R_INCLUDE_DIR
@@ -98,20 +90,71 @@ if(NOT R_HOME)
   endif()
 endif()
 
-find_library(R_LIBRARY
-  NAMES R
-  HINTS
-    "${R_HOME}/lib"
-    "${R_HOME}/lib/x86_64"
-    "${R_HOME}/lib/x64"
-    "${R_HOME}/bin/x64"
-  PATHS
-    "/Library/Frameworks"
-    "/usr/lib/R/lib"
-    "/usr/local/lib/R/lib"
-    "C:/Program Files/R/*/bin/x64"
-  REQUIRED
-)
+if(WIN32)
+  # R on Windows ships only R.dll (MinGW toolchain); generate an MSVC import library.
+  set(_R_DLL "${R_HOME}/bin/x64/R.dll")
+  if(NOT EXISTS "${_R_DLL}")
+    message(FATAL_ERROR "Cannot find R.dll at ${_R_DLL}")
+  endif()
+
+  set(_R_DEF "${CMAKE_CURRENT_BINARY_DIR}/R.def")
+  set(_R_LIB "${CMAKE_CURRENT_BINARY_DIR}/R.lib")
+
+  if(NOT EXISTS "${_R_LIB}")
+    # Extract exports from R.dll and write a .def file
+    execute_process(
+      COMMAND dumpbin /EXPORTS ${_R_DLL}
+      OUTPUT_VARIABLE _R_EXPORTS_RAW
+      RESULT_VARIABLE _R_DUMPBIN_RESULT
+    )
+    if(NOT _R_DUMPBIN_RESULT EQUAL 0)
+      message(FATAL_ERROR "dumpbin /EXPORTS failed on ${_R_DLL}")
+    endif()
+
+    # Parse exported symbol names (column 4 after the ordinal/hint/RVA header)
+    string(REPLACE "\n" ";" _R_EXPORTS_LINES "${_R_EXPORTS_RAW}")
+    set(_R_DEF_CONTENT "EXPORTS\n")
+    set(_R_PAST_HEADER FALSE)
+    foreach(_line IN LISTS _R_EXPORTS_LINES)
+      if(_line MATCHES "^[ \t]+ordinal[ \t]+hint[ \t]+RVA[ \t]+name")
+        set(_R_PAST_HEADER TRUE)
+      elseif(_R_PAST_HEADER)
+        # Each export line looks like:  "   1234    0  00012345 SymbolName"
+        if(_line MATCHES "^[ \t]+[0-9]+[ \t]+[0-9A-Fa-f]+[ \t]+[0-9A-Fa-f]+[ \t]+([^ \t]+)")
+          string(APPEND _R_DEF_CONTENT "  ${CMAKE_MATCH_1}\n")
+        endif()
+      endif()
+    endforeach()
+
+    file(WRITE "${_R_DEF}" "${_R_DEF_CONTENT}")
+
+    # Generate the import library
+    execute_process(
+      COMMAND lib /def:${_R_DEF} /out:${_R_LIB} /machine:x64
+      RESULT_VARIABLE _R_LIB_RESULT
+    )
+    if(NOT _R_LIB_RESULT EQUAL 0)
+      message(FATAL_ERROR "lib.exe failed to create import library from ${_R_DEF}")
+    endif()
+    message(STATUS "Generated R import library: ${_R_LIB}")
+  endif()
+
+  set(R_LIBRARY "${_R_LIB}")
+else()
+  find_library(R_LIBRARY
+    NAMES R
+    HINTS
+      "${R_HOME}/lib"
+      "${R_HOME}/lib/x86_64"
+      "${R_HOME}/lib/x64"
+      "${R_HOME}/bin/x64"
+    PATHS
+      "/Library/Frameworks"
+      "/usr/lib/R/lib"
+      "/usr/local/lib/R/lib"
+    REQUIRED
+  )
+endif()
 
 add_library(EmbedR STATIC
   src/EmbedR.cpp
@@ -144,6 +187,11 @@ if(WIN32)
   target_compile_definitions(EmbedR PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
+if(MSVC)
+  # R headers use C99 _Complex in a union; MSVC does not support _Complex in C++.
+  target_compile_definitions(EmbedR PUBLIC R_LEGACY_RCOMPLEX)
+endif()
+
 if(EMBEDR_BUILD_TESTS)
   enable_testing()
   add_executable(EmbedR_tests tests/EmbedRTests.cpp)
@@ -157,17 +205,17 @@ if(EMBEDR_BUILD_TESTS)
     NAMES readline edit
   )
 
-  if(NOT READLINE_INCLUDE_DIR OR NOT READLINE_LIBRARY)
-    message(FATAL_ERROR "readline development files are required to build EmbedR_repl.")
-  endif()
+  if(READLINE_INCLUDE_DIR AND READLINE_LIBRARY)
+    find_package(Curses)
 
-  find_package(Curses)
-
-  add_executable(rrepl tests/EmbedRRepl.cpp)
-  target_include_directories(rrepl PRIVATE ${READLINE_INCLUDE_DIR})
-  target_link_libraries(rrepl PRIVATE EmbedR::EmbedR ${READLINE_LIBRARY})
-  if(CURSES_FOUND)
-    target_link_libraries(rrepl PRIVATE ${CURSES_LIBRARIES})
+    add_executable(rrepl tests/EmbedRRepl.cpp)
+    target_include_directories(rrepl PRIVATE ${READLINE_INCLUDE_DIR})
+    target_link_libraries(rrepl PRIVATE EmbedR::EmbedR ${READLINE_LIBRARY})
+    if(CURSES_FOUND)
+      target_link_libraries(rrepl PRIVATE ${CURSES_LIBRARIES})
+    endif()
+  else()
+    message(STATUS "readline not found – skipping EmbedR_repl (rrepl) target.")
   endif()
 endif()
 
