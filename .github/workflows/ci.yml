@@ -8,17 +8,41 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+          - os: macos-latest
+            arch: arm64
+          - os: windows-latest
+            arch: amd64
+
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build r-base r-base-dev libreadline-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja r
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install r.project --no-progress -y
 
       - name: Configure
         run: cmake -B build -G Ninja
