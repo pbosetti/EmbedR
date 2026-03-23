@@ -519,7 +519,8 @@ std::vector<std::uint8_t> RInterpreter::render_plot(const std::string& plot_code
       eval("if (dev.cur() > 1) dev.off()");
     } catch (...) {
     }
-    std::filesystem::remove(temp_path);
+    std::error_code ec;
+    std::filesystem::remove(temp_path, ec);
     throw;
   }
 
@@ -529,7 +530,9 @@ std::vector<std::uint8_t> RInterpreter::render_plot(const std::string& plot_code
   }
 
   const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-  std::filesystem::remove(temp_path);
+  file.close();
+  std::error_code ec;
+  std::filesystem::remove(temp_path, ec);
   return bytes;
 }
 
