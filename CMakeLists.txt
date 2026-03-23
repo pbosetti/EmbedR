@@ -115,9 +115,22 @@ endif()
 
 target_link_libraries(EmbedR
   PUBLIC
-    nlohmann_json::nlohmann_json
     ${R_LIBRARY}
 )
+
+if(EMBEDR_USE_SYSTEM_NLOHMANN_JSON)
+  target_link_libraries(EmbedR PUBLIC nlohmann_json::nlohmann_json)
+else()
+  # FetchContent targets are not exportable; expose headers via include dir
+  target_link_libraries(EmbedR PUBLIC $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
+  target_include_directories(EmbedR PUBLIC
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  )
+  install(DIRECTORY "${nlohmann_json_SOURCE_DIR}/include/"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp"
+  )
+endif()
 
 target_compile_definitions(EmbedR
   PUBLIC
