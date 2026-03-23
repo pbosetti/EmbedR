@@ -101,9 +101,14 @@ if(WIN32)
   set(_R_LIB "${CMAKE_CURRENT_BINARY_DIR}/R.lib")
 
   if(NOT EXISTS "${_R_LIB}")
+    # Locate dumpbin and lib next to the MSVC compiler (cl.exe)
+    get_filename_component(_MSVC_TOOL_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    find_program(_DUMPBIN dumpbin HINTS "${_MSVC_TOOL_DIR}" REQUIRED)
+    find_program(_LIBEXE lib      HINTS "${_MSVC_TOOL_DIR}" REQUIRED)
+
     # Extract exports from R.dll and write a .def file
     execute_process(
-      COMMAND dumpbin /EXPORTS ${_R_DLL}
+      COMMAND ${_DUMPBIN} /EXPORTS ${_R_DLL}
       OUTPUT_VARIABLE _R_EXPORTS_RAW
       RESULT_VARIABLE _R_DUMPBIN_RESULT
     )
@@ -130,7 +135,7 @@ if(WIN32)
 
     # Generate the import library
     execute_process(
-      COMMAND lib /def:${_R_DEF} /out:${_R_LIB} /machine:x64
+      COMMAND ${_LIBEXE} /def:${_R_DEF} /out:${_R_LIB} /machine:x64
       RESULT_VARIABLE _R_LIB_RESULT
     )
     if(NOT _R_LIB_RESULT EQUAL 0)
