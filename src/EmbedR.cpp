@@ -285,7 +285,11 @@ RInterpreter::~RInterpreter() {
   }
 
   if (g_instance_count == 0 && is_r_initialized_) {
-    Rf_endEmbeddedR(0);
+    try {
+      Rf_endEmbeddedR(0);
+    } catch (...) {
+      // On Windows R's shutdown may fail to remove locked temp files.
+    }
     is_r_initialized_ = false;
   }
 }

@@ -54,7 +54,7 @@ jobs:
           $rHome = (R.exe RHOME) | Out-String
           $rHome = $rHome.Trim()
           $env:R_HOME = $rHome
-          cmake -B build -DR_HOME="$rHome"
+          cmake -B build -G "Visual Studio 17 2022" -A x64 -DR_HOME="$rHome"
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
