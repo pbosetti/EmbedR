@@ -903,7 +903,7 @@ void RInterpreter::source_script_unlocked(const std::filesystem::path& script_pa
     throw std::runtime_error("Script path is not a regular file: " + script_path.string());
   }
 
-  std::ifstream file(script_path, std::ios::binary);
+  std::ifstream file(script_path);
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open script: " + script_path.string());
   }
