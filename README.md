@@ -1,5 +1,7 @@
 # EmbedR
 
+[![CI](https://github.com/pbosetti/EmbedR/actions/workflows/ci.yml/badge.svg)](https://github.com/pbosetti/EmbedR/actions/workflows/ci.yml)
+
 `EmbedR` is a small C++20 library that embeds the R interpreter into your process and provides:
 
 - R code evaluation from `std::string`
