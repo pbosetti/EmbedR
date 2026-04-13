@@ -194,6 +194,7 @@ public:
   class Function {
   public:
     RValue operator()(const nlohmann::json& argument) const;
+    RValue operator()() const;
     nlohmann::json eval_json(const nlohmann::json& argument) const;
 
   private:

@@ -415,8 +415,13 @@ RInterpreter::RValue RInterpreter::call_function(const std::string& name, const 
   try {
     int protect_count = 0;
     (void)find_function_unlocked(name);
-    SEXP r_argument = json_to_sexp_internal(argument, protect_count);
-    SEXP call = PROTECT(Rf_lang2(Rf_install(name.c_str()), r_argument));
+    SEXP call;
+    if (argument.is_null()) {
+      call = PROTECT(Rf_lang1(Rf_install(name.c_str())));
+    } else {
+      SEXP r_argument = json_to_sexp_internal(argument, protect_count);
+      call = PROTECT(Rf_lang2(Rf_install(name.c_str()), r_argument));
+    }
     ++protect_count;
 
     int error = 0;
@@ -948,6 +953,10 @@ RInterpreter::Function::Function(const RInterpreter& interpreter, std::string na
 
 RInterpreter::RValue RInterpreter::Function::operator()(const nlohmann::json& argument) const {
   return interpreter_->call_function(name_, argument);
+}
+
+RInterpreter::RValue RInterpreter::Function::operator()() const {
+  return interpreter_->call_function(name_, nlohmann::json());
 }
 
 nlohmann::json RInterpreter::Function::eval_json(const nlohmann::json& argument) const {
